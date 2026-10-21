@@ -1,0 +1,1260 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>モンスターアリーナ - Pokemon Style RPG</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Pixel / Modern -->
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Yuji+Syuku&family=DotGothic16&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        pixel: ['"DotGothic16"', 'monospace'],
+                        arcade: ['"Press Start 2P"', 'monospace']
+                    },
+                    colors: {
+                        gbGreen: '#8bac0f',
+                        gbDarkGreen: '#0f380f',
+                        fire: '#FF421D',
+                        water: '#2980B9',
+                        grass: '#2ECC71',
+                        electric: '#F1C40F',
+                        normal: '#A8A878',
+                        ice: '#98D8D8'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'DotGothic16', sans-serif;
+            background-color: #1a202c;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* Screen shake animation */
+        @keyframes shake {
+            0%, 100% { transform: translate(0, 0); }
+            20% { transform: translate(-8px, 5px); }
+            40% { transform: translate(8px, -5px); }
+            60% { transform: translate(-5px, 3px); }
+            80% { transform: translate(5px, -3px); }
+        }
+        .animate-shake {
+            animation: shake 0.4s ease-in-out;
+        }
+
+        /* Monster sprite float idle */
+        @keyframes float-slow {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-8px); }
+        }
+        .animate-float {
+            animation: float-slow 3s ease-in-out infinite;
+        }
+
+        /* Attack lunge animation */
+        @keyframes attack-player {
+            0% { transform: translate(0, 0); }
+            40% { transform: translate(40px, -30px) scale(1.1); }
+            100% { transform: translate(0, 0); }
+        }
+        .animate-attack-player {
+            animation: attack-player 0.4s ease-in-out;
+        }
+
+        @keyframes attack-enemy {
+            0% { transform: translate(0, 0); }
+            40% { transform: translate(-40px, 30px) scale(1.1); }
+            100% { transform: translate(0, 0); }
+        }
+        .animate-attack-enemy {
+            animation: attack-enemy 0.4s ease-in-out;
+        }
+
+        /* Retro UI Border */
+        .pixel-box {
+            border: 4px solid #334155;
+            box-shadow: inset -4px -4px 0px 0px #0f172a, inset 4px 4px 0px 0px #475569;
+            background: rgba(15, 23, 42, 0.92);
+        }
+
+        .pixel-btn {
+            position: relative;
+            transition: all 0.1s ease;
+            box-shadow: 0 4px 0 0 #1e293b;
+        }
+        .pixel-btn:active {
+            transform: translateY(4px);
+            box-shadow: 0 0 0 0 #1e293b;
+        }
+
+        /* HP Bar smooth fill */
+        .hp-fill {
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.4s ease;
+        }
+
+        /* Canvas FX overlay */
+        #fxCanvas {
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body class="min-h-screen text-white flex flex-col items-center justify-center p-2 sm:p-4 overflow-x-hidden select-none">
+
+    <!-- Sound Mute Toggle -->
+    <div class="fixed top-3 right-3 z-50 flex items-center gap-2 bg-slate-800/80 px-3 py-1.5 rounded-full border border-slate-600 shadow-lg backdrop-blur">
+        <button id="soundToggleBtn" class="text-xs text-yellow-400 hover:text-yellow-300 font-bold focus:outline-none flex items-center gap-1">
+            <i class="fa-solid fa-volume-high" id="soundIcon"></i> SOUND ON
+        </button>
+    </div>
+
+    <!-- Main Container -->
+    <div id="gameContainer" class="w-full max-w-2xl bg-slate-900 rounded-2xl overflow-hidden shadow-2xl border-4 border-slate-700 relative flex flex-col">
+        
+        <!-- Header / Game Mode Switcher -->
+        <div class="bg-slate-800 px-4 py-2 border-b-2 border-slate-700 flex justify-between items-center text-xs sm:text-sm font-pixel">
+            <div class="flex items-center gap-2">
+                <i class="fa-solid fa-gamepad text-red-500 text-lg"></i>
+                <span class="tracking-wider text-slate-200">MONSTER BATTLE ARENA</span>
+            </div>
+            <div id="battleStageInfo" class="text-emerald-400 font-bold">
+                STAGE <span id="stageNum">1</span> / 野生モンスター戦
+            </div>
+        </div>
+
+        <!-- Battle Screen Viewport -->
+        <div id="viewport" class="relative w-full h-64 sm:h-80 bg-gradient-to-b from-sky-900 via-indigo-950 to-emerald-950 overflow-hidden flex flex-col justify-between p-4">
+            
+            <!-- Background Environment Shapes -->
+            <div class="absolute inset-0 opacity-20 pointer-events-none">
+                <div class="absolute bottom-0 w-full h-1/2 bg-emerald-900 rounded-t-[100px]"></div>
+                <div class="absolute top-4 left-10 w-20 h-8 bg-sky-300 rounded-full blur-md opacity-40"></div>
+                <div class="absolute top-10 right-20 w-32 h-10 bg-sky-300 rounded-full blur-md opacity-30"></div>
+            </div>
+
+            <!-- Visual FX Canvas Overlay -->
+            <canvas id="fxCanvas" class="absolute inset-0 z-20 w-full h-full"></canvas>
+
+            <!-- Top Row: Enemy Area (Top-Right Enemy Monster & Top-Left Enemy HUD) -->
+            <div class="relative z-10 flex justify-between items-start w-full pt-1">
+                <!-- Enemy HUD -->
+                <div class="w-48 sm:w-60 bg-slate-900/90 border-2 border-slate-600 rounded-lg p-2 shadow-lg backdrop-blur">
+                    <div class="flex justify-between items-center font-bold text-xs sm:text-sm">
+                        <span id="enemyName" class="truncate text-red-300">ホノオドラ</span>
+                        <span class="text-xs text-slate-400">Lv.<span id="enemyLv">12</span></span>
+                    </div>
+                    <!-- Type Badges -->
+                    <div id="enemyTypeBadges" class="flex gap-1 my-1"></div>
+                    <!-- HP Bar -->
+                    <div class="w-full bg-slate-700 h-3 rounded-full overflow-hidden border border-slate-600 relative mt-1">
+                        <div id="enemyHpBar" class="hp-fill h-full bg-emerald-500 w-full"></div>
+                    </div>
+                    <div class="text-[10px] text-right text-slate-400 mt-0.5">
+                        HP: <span id="enemyHpText">100/100</span>
+                    </div>
+                    <!-- Status Effect Tag -->
+                    <div id="enemyStatusTag" class="hidden text-[10px] px-1.5 py-0.5 rounded bg-amber-600 font-bold inline-block mt-1"></div>
+                </div>
+
+                <!-- Enemy Monster Display Ground & Sprite -->
+                <div class="relative flex flex-col items-center justify-center mr-4 sm:mr-8">
+                    <!-- Ground Shadow Platform -->
+                    <div class="w-28 sm:w-36 h-8 bg-emerald-950/80 rounded-[50%] border border-emerald-700/50 absolute bottom-0 blur-[2px]"></div>
+                    <!-- Monster Canvas/Sprite -->
+                    <div id="enemySpriteContainer" class="relative z-10 animate-float transition-all duration-300">
+                        <svg id="enemySvg" class="w-24 h-24 sm:w-32 sm:h-32 drop-shadow-xl" viewBox="0 0 100 100"></svg>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Row: Player Area (Bottom-Left Player Monster & Bottom-Right Player HUD) -->
+            <div class="relative z-10 flex justify-between items-end w-full pb-1">
+                <!-- Player Monster Display Ground & Sprite -->
+                <div class="relative flex flex-col items-center justify-center ml-4 sm:ml-8">
+                    <!-- Ground Shadow Platform -->
+                    <div class="w-32 sm:w-40 h-9 bg-emerald-950/80 rounded-[50%] border border-emerald-700/50 absolute bottom-0 blur-[2px]"></div>
+                    <!-- Player Sprite -->
+                    <div id="playerSpriteContainer" class="relative z-10 animate-float transition-all duration-300">
+                        <svg id="playerSvg" class="w-28 h-28 sm:w-36 sm:h-36 drop-shadow-xl" viewBox="0 0 100 100"></svg>
+                    </div>
+                </div>
+
+                <!-- Player HUD -->
+                <div class="w-52 sm:w-64 bg-slate-900/90 border-2 border-slate-600 rounded-lg p-2.5 shadow-lg backdrop-blur">
+                    <div class="flex justify-between items-center font-bold text-xs sm:text-sm">
+                        <span id="playerName" class="truncate text-cyan-300">アクアシェル</span>
+                        <span class="text-xs text-slate-400">Lv.<span id="playerLv">15</span></span>
+                    </div>
+                    <!-- Type Badges -->
+                    <div id="playerTypeBadges" class="flex gap-1 my-1"></div>
+                    <!-- HP Bar -->
+                    <div class="w-full bg-slate-700 h-3.5 rounded-full overflow-hidden border border-slate-600 relative mt-1">
+                        <div id="playerHpBar" class="hp-fill h-full bg-emerald-500 w-full"></div>
+                    </div>
+                    <div class="flex justify-between items-center text-[11px] text-slate-300 mt-0.5">
+                        <span id="playerStatusTag" class="hidden text-[10px] px-1 py-0.2 rounded bg-amber-600 font-bold"></span>
+                        <span class="ml-auto font-mono">HP: <span id="playerHpText">120/120</span></span>
+                    </div>
+                    <!-- EXP Bar -->
+                    <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-1 border border-slate-700">
+                        <div id="playerExpBar" class="h-full bg-cyan-400 transition-all duration-500 w-0"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Message / Narrative Output Box -->
+        <div class="bg-slate-950 p-3 sm:p-4 border-t-2 border-b-2 border-slate-700 h-20 sm:h-24 flex items-center justify-between relative overflow-hidden">
+            <p id="battleLog" class="text-sm sm:text-base leading-relaxed text-slate-100 font-pixel tracking-wide w-full">
+                あかい モンスターが あらわれた！ どうする？
+            </p>
+            <div id="logNextIndicator" class="hidden animate-bounce text-yellow-400 text-xs pl-2">
+                <i class="fa-solid fa-caret-down"></i>
+            </div>
+        </div>
+
+        <!-- Control Action Command Panel -->
+        <div id="controlPanel" class="p-3 bg-slate-900 grid grid-cols-2 gap-2 min-h-[140px]">
+            <!-- Main Command Menu (Default) -->
+            <div id="mainCommands" class="col-span-2 grid grid-cols-2 gap-2">
+                <button id="cmdFight" onclick="showMoveMenu()" class="pixel-btn bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 text-white font-bold p-3 rounded-xl flex items-center justify-center gap-2 border border-red-400 text-sm sm:text-base">
+                    <i class="fa-solid fa-swords text-lg"></i> たたたかう
+                </button>
+                <button id="cmdBag" onclick="openBagModal()" class="pixel-btn bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 text-white font-bold p-3 rounded-xl flex items-center justify-center gap-2 border border-yellow-400 text-sm sm:text-base">
+                    <i class="fa-solid fa-briefcase text-lg"></i> どうぐ
+                </button>
+                <button id="cmdParty" onclick="openPartyModal()" class="pixel-btn bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold p-3 rounded-xl flex items-center justify-center gap-2 border border-emerald-400 text-sm sm:text-base">
+                    <i class="fa-solid fa-users text-lg"></i> ポケモン
+                </button>
+                <button id="cmdCatch" onclick="attemptCatch()" class="pixel-btn bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold p-3 rounded-xl flex items-center justify-center gap-2 border border-purple-400 text-sm sm:text-base">
+                    <i class="fa-solid fa-circle-dot text-lg text-red-300"></i> ゲットする
+                </button>
+            </div>
+
+            <!-- Fight Move Selection Grid (Hidden initially) -->
+            <div id="moveCommands" class="col-span-2 hidden grid grid-cols-2 gap-2">
+                <!-- 4 Moves populate dynamically -->
+                <button id="moveBtn0" onclick="useMove(0)" class="pixel-btn bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-xl p-2.5 text-left flex flex-col justify-between">
+                    <div class="flex justify-between items-center w-full">
+                        <span class="move-name font-bold text-xs sm:text-sm text-slate-100">---</span>
+                        <span class="move-type text-[10px] px-1.5 py-0.5 rounded font-bold uppercase">---</span>
+                    </div>
+                    <div class="text-[10px] text-slate-400 mt-1 flex justify-between">
+                        <span>PP <span class="move-pp">0/0</span></span>
+                        <span>威力 <span class="move-pow">0</span></span>
+                    </div>
+                </button>
+                <button id="moveBtn1" onclick="useMove(1)" class="pixel-btn bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-xl p-2.5 text-left flex flex-col justify-between">
+                    <div class="flex justify-between items-center w-full">
+                        <span class="move-name font-bold text-xs sm:text-sm text-slate-100">---</span>
+                        <span class="move-type text-[10px] px-1.5 py-0.5 rounded font-bold uppercase">---</span>
+                    </div>
+                    <div class="text-[10px] text-slate-400 mt-1 flex justify-between">
+                        <span>PP <span class="move-pp">0/0</span></span>
+                        <span>威力 <span class="move-pow">0</span></span>
+                    </div>
+                </button>
+                <button id="moveBtn2" onclick="useMove(2)" class="pixel-btn bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-xl p-2.5 text-left flex flex-col justify-between">
+                    <div class="flex justify-between items-center w-full">
+                        <span class="move-name font-bold text-xs sm:text-sm text-slate-100">---</span>
+                        <span class="move-type text-[10px] px-1.5 py-0.5 rounded font-bold uppercase">---</span>
+                    </div>
+                    <div class="text-[10px] text-slate-400 mt-1 flex justify-between">
+                        <span>PP <span class="move-pp">0/0</span></span>
+                        <span>威力 <span class="move-pow">0</span></span>
+                    </div>
+                </button>
+                <button id="moveBtn3" onclick="useMove(3)" class="pixel-btn bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-xl p-2.5 text-left flex flex-col justify-between">
+                    <div class="flex justify-between items-center w-full">
+                        <span class="move-name font-bold text-xs sm:text-sm text-slate-100">---</span>
+                        <span class="move-type text-[10px] px-1.5 py-0.5 rounded font-bold uppercase">---</span>
+                    </div>
+                    <div class="text-[10px] text-slate-400 mt-1 flex justify-between">
+                        <span>PP <span class="move-pp">0/0</span></span>
+                        <span>威力 <span class="move-pow">0</span></span>
+                    </div>
+                </button>
+                
+                <!-- Back Button -->
+                <div class="col-span-2 flex justify-end">
+                    <button onclick="hideMoveMenu()" class="text-xs text-slate-400 hover:text-slate-200 px-3 py-1 bg-slate-800 rounded border border-slate-700">
+                        <i class="fa-solid fa-arrow-left mr-1"></i> もどる
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Party / Switch Modal -->
+    <div id="partyModal" class="fixed inset-0 bg-black/75 z-50 hidden flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-slate-900 border-2 border-slate-600 rounded-2xl w-full max-w-md p-4 text-white shadow-2xl flex flex-col gap-3">
+            <div class="flex justify-between items-center border-b border-slate-700 pb-2">
+                <h3 class="font-bold text-lg text-emerald-400 flex items-center gap-2">
+                    <i class="fa-solid fa-users"></i> てもとポケモン
+                </h3>
+                <button onclick="closePartyModal()" class="text-slate-400 hover:text-white text-lg">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div id="partyList" class="flex flex-col gap-2 max-h-72 overflow-y-auto pr-1">
+                <!-- Dynamic Party Cards -->
+            </div>
+            <div class="text-xs text-slate-400 text-center pt-2 border-t border-slate-800">
+                戦闘に出すモンスターを選択してください
+            </div>
+        </div>
+    </div>
+
+    <!-- Bag / Item Modal -->
+    <div id="bagModal" class="fixed inset-0 bg-black/75 z-50 hidden flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-slate-900 border-2 border-slate-600 rounded-2xl w-full max-w-md p-4 text-white shadow-2xl flex flex-col gap-3">
+            <div class="flex justify-between items-center border-b border-slate-700 pb-2">
+                <h3 class="font-bold text-lg text-amber-400 flex items-center gap-2">
+                    <i class="fa-solid fa-briefcase"></i> どうぐポケット
+                </h3>
+                <button onclick="closeBagModal()" class="text-slate-400 hover:text-white text-lg">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div id="itemList" class="flex flex-col gap-2 max-h-72 overflow-y-auto pr-1">
+                <!-- Dynamic Item Cards -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Game Over / Victory Overlay -->
+    <div id="resultModal" class="fixed inset-0 bg-black/85 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border-4 border-yellow-500 rounded-2xl w-full max-w-sm p-6 text-center text-white shadow-2xl flex flex-col items-center gap-4 animate-shake">
+            <div id="resultIcon" class="text-5xl text-yellow-400">
+                <i class="fa-solid fa-trophy"></i>
+            </div>
+            <h2 id="resultTitle" class="text-2xl font-bold font-pixel text-yellow-300">しょうり！</h2>
+            <p id="resultDesc" class="text-sm text-slate-300 leading-relaxed">
+                相手のモンスターを たおした！
+            </p>
+            <button id="resultBtn" onclick="nextBattleStage()" class="pixel-btn bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-2.5 rounded-xl border border-emerald-300 w-full text-base mt-2">
+                つぎの バトルへ
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Web Audio API Sound Synthesizer for Retro Sound Effects
+        const AudioFX = {
+            ctx: null,
+            muted: false,
+
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioCtx();
+                }
+            },
+
+            playTone(freq, type, duration, gainValue = 0.1) {
+                if (this.muted) return;
+                this.init();
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = type;
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                    gain.gain.setValueAtTime(gainValue, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + duration);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + duration);
+                } catch(e) {}
+            },
+
+            playClick() {
+                this.playTone(600, 'square', 0.05, 0.05);
+            },
+
+            playHit() {
+                if (this.muted) return;
+                this.init();
+                try {
+                    // Noise buffer hit sound
+                    const bufferSize = this.ctx.sampleRate * 0.15;
+                    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                    const output = buffer.getChannelData(0);
+                    for (let i = 0; i < bufferSize; i++) {
+                        output[i] = Math.random() * 2 - 1;
+                    }
+                    const whiteNoise = this.ctx.createBufferSource();
+                    whiteNoise.buffer = buffer;
+                    const filter = this.ctx.createBiquadFilter();
+                    filter.type = 'lowpass';
+                    filter.frequency.setValueAtTime(800, this.ctx.currentTime);
+                    filter.frequency.exponentialRampToValueAtTime(50, this.ctx.currentTime + 0.15);
+
+                    const gain = this.ctx.createGain();
+                    gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.15);
+
+                    whiteNoise.connect(filter);
+                    filter.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    whiteNoise.start();
+                } catch(e) {}
+            },
+
+            playSuperEffective() {
+                if (this.muted) return;
+                let notes = [261, 329, 392, 523];
+                notes.forEach((freq, idx) => {
+                    setTimeout(() => {
+                        this.playTone(freq, 'triangle', 0.1, 0.1);
+                    }, idx * 60);
+                });
+            },
+
+            playCatchSuccess() {
+                if (this.muted) return;
+                let notes = [440, 554, 659, 880, 1108];
+                notes.forEach((freq, idx) => {
+                    setTimeout(() => {
+                        this.playTone(freq, 'sine', 0.15, 0.12);
+                    }, idx * 90);
+                });
+            },
+
+            playFaint() {
+                if (this.muted) return;
+                let notes = [400, 350, 300, 250, 180];
+                notes.forEach((freq, idx) => {
+                    setTimeout(() => {
+                        this.playTone(freq, 'sawtooth', 0.12, 0.08);
+                    }, idx * 70);
+                });
+            }
+        };
+
+        document.getElementById('soundToggleBtn').addEventListener('click', () => {
+            AudioFX.muted = !AudioFX.muted;
+            const btn = document.getElementById('soundToggleBtn');
+            if (AudioFX.muted) {
+                btn.innerHTML = `<i class="fa-solid fa-volume-xmark"></i> SOUND OFF`;
+                btn.classList.remove('text-yellow-400');
+                btn.classList.add('text-slate-400');
+            } else {
+                btn.innerHTML = `<i class="fa-solid fa-volume-high"></i> SOUND ON`;
+                btn.classList.remove('text-slate-400');
+                btn.classList.add('text-yellow-400');
+                AudioFX.playClick();
+            }
+        });
+
+        // Type Table Definitions & Multipliers
+        const TYPES = {
+            FIRE: { name: 'ほのお', color: 'bg-red-500 text-white', code: 'fire' },
+            WATER: { name: 'みず', color: 'bg-blue-500 text-white', code: 'water' },
+            GRASS: { name: 'くさ', color: 'bg-green-500 text-white', code: 'grass' },
+            ELECTRIC: { name: 'でんき', color: 'bg-yellow-400 text-slate-900', code: 'electric' },
+            NORMAL: { name: 'ノーマル', color: 'bg-slate-400 text-white', code: 'normal' }
+        };
+
+        const TYPE_EFFECTIVENESS = {
+            FIRE: { GRASS: 2.0, WATER: 0.5, FIRE: 0.5 },
+            WATER: { FIRE: 2.0, GRASS: 0.5, WATER: 0.5 },
+            GRASS: { WATER: 2.0, FIRE: 0.5, GRASS: 0.5 },
+            ELECTRIC: { WATER: 2.0, GRASS: 0.5, ELECTRIC: 0.5 },
+            NORMAL: {}
+        };
+
+        // Master Move Registry
+        const MOVES = {
+            flameBall: { name: 'ひのたま', type: 'FIRE', power: 40, maxPp: 25, animation: 'fire' },
+            fireVortex: { name: 'ほのおのうず', type: 'FIRE', power: 75, maxPp: 10, animation: 'fire' },
+            waterGun: { name: 'みずでっぽう', type: 'WATER', power: 40, maxPp: 25, animation: 'water' },
+            hydroPump: { name: 'ハイドロポンプ', type: 'WATER', power: 85, maxPp: 5, animation: 'water' },
+            leafCutter: { name: 'はっぱカッター', type: 'GRASS', power: 50, maxPp: 20, animation: 'grass' },
+            gigaDrain: { name: 'ギガドレイン', type: 'GRASS', power: 65, maxPp: 10, healRatio: 0.5, animation: 'grass' },
+            spark: { name: 'でんげきは', type: 'ELECTRIC', power: 45, maxPp: 20, animation: 'electric' },
+            thunderbolt: { name: '10まんボルト', type: 'ELECTRIC', power: 80, maxPp: 10, animation: 'electric' },
+            tackle: { name: 'たい当たり', type: 'NORMAL', power: 35, maxPp: 35, animation: 'normal' },
+            quickAttack: { name: 'でんこうせっか', type: 'NORMAL', power: 40, maxPp: 30, priority: 1, animation: 'normal' },
+            powerUp: { name: 'ビルドアップ', type: 'NORMAL', power: 0, maxPp: 15, statBoost: { stat: 'atk', amount: 1 }, animation: 'buff' },
+            harden: { name: 'かたまる', type: 'NORMAL', power: 0, maxPp: 20, statBoost: { stat: 'def', amount: 1 }, animation: 'buff' }
+        };
+
+        // Monster Database Templates
+        const MONSTER_SPECIES = {
+            HONOODORA: {
+                id: 'HONOODORA',
+                name: 'ホノオドラ',
+                types: ['FIRE'],
+                baseHp: 95,
+                baseAtk: 78,
+                baseDef: 60,
+                baseSpd: 70,
+                moves: ['flameBall', 'fireVortex', 'tackle', 'powerUp'],
+                svgFn: createDragonSvg
+            },
+            AQUASHELL: {
+                id: 'AQUASHELL',
+                name: 'アクアシェル',
+                types: ['WATER'],
+                baseHp: 110,
+                baseAtk: 65,
+                baseDef: 85,
+                baseSpd: 50,
+                moves: ['waterGun', 'hydroPump', 'tackle', 'harden'],
+                svgFn: createTurtleSvg
+            },
+            LEAFTAIL: {
+                id: 'LEAFTAIL',
+                name: 'リーフテイル',
+                types: ['GRASS'],
+                baseHp: 85,
+                baseAtk: 70,
+                baseDef: 65,
+                baseSpd: 85,
+                moves: ['leafCutter', 'gigaDrain', 'quickAttack', 'powerUp'],
+                svgFn: createFoxSvg
+            },
+            ELEKIROD: {
+                id: 'ELEKIROD',
+                name: 'エレキロッド',
+                types: ['ELECTRIC'],
+                baseHp: 80,
+                baseAtk: 82,
+                baseDef: 50,
+                baseSpd: 100,
+                moves: ['spark', 'thunderbolt', 'quickAttack', 'harden'],
+                svgFn: createMouseSvg
+            }
+        };
+
+        function createDragonSvg(color = '#FF421D') {
+            return `
+                <g transform="translate(10,10)">
+                    <circle cx="40" cy="40" r="30" fill="${color}" stroke="#900" stroke-width="3"/>
+                    <path d="M 20 20 Q 10 5 25 10 Z" fill="#F1C40F" />
+                    <path d="M 60 20 Q 70 5 55 10 Z" fill="#F1C40F" />
+                    <circle cx="30" cy="35" r="5" fill="#FFF"/>
+                    <circle cx="32" cy="35" r="2" fill="#000"/>
+                    <circle cx="50" cy="35" r="5" fill="#FFF"/>
+                    <circle cx="52" cy="35" r="2" fill="#000"/>
+                    <path d="M 25 50 Q 40 65 55 50" fill="none" stroke="#600" stroke-width="3" stroke-linecap="round"/>
+                    <path d="M 15 50 C -5 40 -5 70 15 65" fill="${color}" stroke="#900" stroke-width="2"/>
+                    <path d="M 65 50 C 85 40 85 70 65 65" fill="${color}" stroke="#900" stroke-width="2"/>
+                </g>`;
+        }
+
+        function createTurtleSvg(color = '#2980B9') {
+            return `
+                <g transform="translate(10,10)">
+                    <ellipse cx="40" cy="45" rx="32" ry="25" fill="#795548" stroke="#3E2723" stroke-width="3"/>
+                    <path d="M 20 40 Q 40 25 60 40 Q 40 60 20 40" fill="#A1887F"/>
+                    <circle cx="40" cy="25" r="18" fill="${color}" stroke="#1565C0" stroke-width="3"/>
+                    <circle cx="33" cy="22" r="4" fill="#FFF"/>
+                    <circle cx="34" cy="22" r="2" fill="#000"/>
+                    <circle cx="47" cy="22" r="4" fill="#FFF"/>
+                    <circle cx="48" cy="22" r="2" fill="#000"/>
+                    <path d="M 35 30 Q 40 34 45 30" fill="none" stroke="#0D47A1" stroke-width="2"/>
+                </g>`;
+        }
+
+        function createFoxSvg(color = '#2ECC71') {
+            return `
+                <g transform="translate(10,10)">
+                    <polygon points="15,10 30,35 5,30" fill="${color}" stroke="#1B5E20" stroke-width="2"/>
+                    <polygon points="65,10 50,35 75,30" fill="${color}" stroke="#1B5E20" stroke-width="2"/>
+                    <ellipse cx="40" cy="42" rx="26" ry="22" fill="${color}" stroke="#1B5E20" stroke-width="3"/>
+                    <circle cx="30" cy="38" r="4" fill="#FFF"/>
+                    <circle cx="31" cy="38" r="2" fill="#000"/>
+                    <circle cx="50" cy="38" r="4" fill="#FFF"/>
+                    <circle cx="51" cy="38" r="2" fill="#000"/>
+                    <polygon points="40,46 37,43 43,43" fill="#1B5E20"/>
+                    <path d="M 35 52 Q 40 56 45 52" stroke="#1B5E20" stroke-width="2" fill="none"/>
+                </g>`;
+        }
+
+        function createMouseSvg(color = '#F1C40F') {
+            return `
+                <g transform="translate(10,10)">
+                    <ellipse cx="15" cy="15" rx="12" ry="18" fill="#D35400" transform="rotate(-20 15 15)"/>
+                    <ellipse cx="65" cy="15" rx="12" ry="18" fill="#D35400" transform="rotate(20 65 15)"/>
+                    <circle cx="40" cy="42" r="26" fill="${color}" stroke="#F39C12" stroke-width="3"/>
+                    <circle cx="28" cy="38" r="4" fill="#000"/>
+                    <circle cx="29" cy="36" r="1.5" fill="#FFF"/>
+                    <circle cx="52" cy="38" r="4" fill="#000"/>
+                    <circle cx="53" cy="36" r="1.5" fill="#FFF"/>
+                    <circle cx="20" cy="48" r="5" fill="#E74C3C"/>
+                    <circle cx="60" cy="48" r="5" fill="#E74C3C"/>
+                    <polygon points="40,44 38,42 42,42" fill="#000"/>
+                </g>`;
+        }
+
+        // Monster Instance Class
+        class Monster {
+            constructor(speciesKey, level = 10) {
+                const spec = MONSTER_SPECIES[speciesKey];
+                this.speciesKey = speciesKey;
+                this.name = spec.name;
+                this.types = [...spec.types];
+                this.level = level;
+                this.maxHp = Math.floor(spec.baseHp * (level / 10));
+                this.currentHp = this.maxHp;
+                this.atk = Math.floor(spec.baseAtk * (level / 10));
+                this.def = Math.floor(spec.baseDef * (level / 10));
+                this.spd = Math.floor(spec.baseSpd * (level / 10));
+                
+                // Stat modifiers
+                this.atkStage = 0;
+                this.defStage = 0;
+
+                this.moves = spec.moves.map(mKey => {
+                    const m = MOVES[mKey];
+                    return {
+                        id: mKey,
+                        name: m.name,
+                        type: m.type,
+                        power: m.power,
+                        maxPp: m.maxPp,
+                        currentPp: m.maxPp,
+                        statBoost: m.statBoost,
+                        healRatio: m.healRatio,
+                        priority: m.priority || 0,
+                        animation: m.animation
+                    };
+                });
+                this.svgFn = spec.svgFn;
+            }
+
+            get EffectiveAtk() {
+                let mult = 1 + (this.atkStage * 0.25);
+                return Math.max(10, Math.floor(this.atk * mult));
+            }
+
+            get EffectiveDef() {
+                let mult = 1 + (this.defStage * 0.25);
+                return Math.max(10, Math.floor(this.def * mult));
+            }
+
+            isFainted() {
+                return this.currentHp <= 0;
+            }
+        }
+
+        // Game Core State
+        const Game = {
+            stage: 1,
+            playerParty: [],
+            activePlayerIdx: 0,
+            enemyMonster: null,
+            items: [
+                { id: 'potion', name: 'ポーション', desc: 'HPを 50 かいふくする', qty: 5, heal: 50 },
+                { id: 'superPotion', name: 'スーパーポーション', desc: 'HPを 100 かいふくする', qty: 2, heal: 100 },
+                { id: 'atkBoost', name: 'プラスパワー', desc: 'こうげき力を ぐーんとあげる', qty: 3, buffAtk: 2 }
+            ],
+            exp: 0,
+            isTurnProcessing: false,
+
+            get playerMonster() {
+                return this.playerParty[this.activePlayerIdx];
+            }
+        };
+
+        // Visual Animation FX Engine (Canvas based)
+        const FXEngine = {
+            canvas: null,
+            ctx: null,
+
+            init() {
+                this.canvas = document.getElementById('fxCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.resize();
+                window.addEventListener('resize', () => this.resize());
+            },
+
+            resize() {
+                if (!this.canvas) return;
+                const rect = this.canvas.parentElement.getBoundingClientRect();
+                this.canvas.width = rect.width;
+                this.canvas.height = rect.height;
+            },
+
+            clear() {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+            },
+
+            playAttackFx(type, isPlayerAttacking, callback) {
+                this.resize();
+                const startX = isPlayerAttacking ? this.canvas.width * 0.25 : this.canvas.width * 0.75;
+                const startY = isPlayerAttacking ? this.canvas.height * 0.7 : this.canvas.height * 0.3;
+                const targetX = isPlayerAttacking ? this.canvas.width * 0.75 : this.canvas.width * 0.25;
+                const targetY = isPlayerAttacking ? this.canvas.height * 0.3 : this.canvas.height * 0.7;
+
+                let frame = 0;
+                const maxFrames = 30;
+
+                const animate = () => {
+                    this.clear();
+                    frame++;
+                    const progress = frame / maxFrames;
+                    const currX = startX + (targetX - startX) * progress;
+                    const currY = startY + (targetY - startY) * progress;
+
+                    this.ctx.save();
+                    if (type === 'fire') {
+                        // Fireball particles
+                        for (let i = 0; i < 8; i++) {
+                            this.ctx.beginPath();
+                            this.ctx.arc(currX + (Math.random() * 20 - 10), currY + (Math.random() * 20 - 10), 8 + Math.random() * 12, 0, Math.PI * 2);
+                            this.ctx.fillStyle = i % 2 === 0 ? '#FF421D' : '#F1C40F';
+                            this.ctx.fill();
+                        }
+                    } else if (type === 'water') {
+                        // Water drops
+                        for (let i = 0; i < 10; i++) {
+                            this.ctx.beginPath();
+                            this.ctx.arc(currX + (Math.random() * 30 - 15), currY + (Math.random() * 30 - 15), 6 + Math.random() * 8, 0, Math.PI * 2);
+                            this.ctx.fillStyle = '#2980B9';
+                            this.ctx.fill();
+                        }
+                    } else if (type === 'grass') {
+                        // Leaf slashes
+                        this.ctx.strokeStyle = '#2ECC71';
+                        this.ctx.lineWidth = 4;
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(currX - 15, currY - 15);
+                        this.ctx.lineTo(currX + 15, currY + 15);
+                        this.ctx.stroke();
+                    } else if (type === 'electric') {
+                        // Lightning bolts
+                        this.ctx.strokeStyle = '#F1C40F';
+                        this.ctx.lineWidth = 5;
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(currX, currY - 20);
+                        this.ctx.lineTo(currX + 10, currY);
+                        this.ctx.lineTo(currX - 10, currY + 10);
+                        this.ctx.lineTo(currX, currY + 25);
+                        this.ctx.stroke();
+                    } else {
+                        // Normal physical hit spark
+                        this.ctx.fillStyle = '#FFFFFF';
+                        this.ctx.beginPath();
+                        this.ctx.arc(currX, currY, 15 * Math.sin(progress * Math.PI), 0, Math.PI * 2);
+                        this.ctx.fill();
+                    }
+                    this.ctx.restore();
+
+                    if (frame < maxFrames) {
+                        requestAnimationFrame(animate);
+                    } else {
+                        this.clear();
+                        if (callback) callback();
+                    }
+                };
+                animate();
+            }
+        };
+
+        // Initial Game Setup
+        function initGame() {
+            FXEngine.init();
+
+            // Create initial player party
+            Game.playerParty = [
+                new Monster('AQUASHELL', 12),
+                new Monster('LEAFTAIL', 10),
+                new Monster('HONOODORA', 10)
+            ];
+            Game.activePlayerIdx = 0;
+            Game.stage = 1;
+
+            spawnStageEnemy();
+            updateUI();
+        }
+
+        function spawnStageEnemy() {
+            const speciesKeys = Object.keys(MONSTER_SPECIES);
+            const randomKey = speciesKeys[Math.floor(Math.random() * speciesKeys.length)];
+            const enemyLv = 8 + Game.stage * 2;
+            Game.enemyMonster = new Monster(randomKey, enemyLv);
+            
+            document.getElementById('stageNum').textContent = Game.stage;
+            setBattleLog(`野生の ${Game.enemyMonster.name} (Lv.${Game.enemyMonster.level}) が あらわれた！`);
+        }
+
+        function getTypeMultiplier(moveType, targetTypes) {
+            let mult = 1.0;
+            const table = TYPE_EFFECTIVENESS[moveType];
+            if (!table) return mult;
+
+            targetTypes.forEach(t => {
+                if (table[t] !== undefined) {
+                    mult *= table[t];
+                }
+            });
+            return mult;
+        }
+
+        function calculateDamage(attacker, defender, move) {
+            if (move.power === 0) return { damage: 0, mult: 1 };
+
+            const level = attacker.level;
+            const atk = attacker.EffectiveAtk;
+            const def = defender.EffectiveDef;
+            const mult = getTypeMultiplier(move.type, defender.types);
+
+            // Pokemon formula approximation
+            let baseDamage = Math.floor(Math.floor(Math.floor(2 * level / 5 + 2) * move.power * atk / def) / 50) + 2;
+            let randomFactor = (Math.floor(Math.random() * 15) + 85) / 100;
+            let finalDamage = Math.max(1, Math.floor(baseDamage * mult * randomFactor));
+
+            return { damage: finalDamage, mult: mult };
+        }
+
+        // UI Renderers & Helpers
+        function updateUI() {
+            const player = Game.playerMonster;
+            const enemy = Game.enemyMonster;
+
+            // Player Info
+            document.getElementById('playerName').textContent = player.name;
+            document.getElementById('playerLv').textContent = player.level;
+            document.getElementById('playerHpText').textContent = `${player.currentHp}/${player.maxHp}`;
+            
+            const playerHpPct = Math.max(0, (player.currentHp / player.maxHp) * 100);
+            const playerHpBar = document.getElementById('playerHpBar');
+            playerHpBar.style.width = `${playerHpPct}%`;
+            setHpBarColor(playerHpBar, playerHpPct);
+
+            renderTypeBadges('playerTypeBadges', player.types);
+            document.getElementById('playerSvg').innerHTML = player.svgFn('#2980B9');
+
+            // Enemy Info
+            document.getElementById('enemyName').textContent = enemy.name;
+            document.getElementById('enemyLv').textContent = enemy.level;
+            document.getElementById('enemyHpText').textContent = `${enemy.currentHp}/${enemy.maxHp}`;
+            
+            const enemyHpPct = Math.max(0, (enemy.currentHp / enemy.maxHp) * 100);
+            const enemyHpBar = document.getElementById('enemyHpBar');
+            enemyHpBar.style.width = `${enemyHpPct}%`;
+            setHpBarColor(enemyHpBar, enemyHpPct);
+
+            renderTypeBadges('enemyTypeBadges', enemy.types);
+            document.getElementById('enemySvg').innerHTML = enemy.svgFn('#FF421D');
+
+            // Moves button binding
+            for (let i = 0; i < 4; i++) {
+                const btn = document.getElementById(`moveBtn${i}`);
+                if (player.moves[i]) {
+                    const m = player.moves[i];
+                    btn.classList.remove('hidden');
+                    btn.querySelector('.move-name').textContent = m.name;
+                    btn.querySelector('.move-pp').textContent = `${m.currentPp}/${m.maxPp}`;
+                    btn.querySelector('.move-pow').textContent = m.power || '-';
+                    
+                    const typeBadge = btn.querySelector('.move-type');
+                    typeBadge.textContent = TYPES[m.type].name;
+                    typeBadge.className = `move-type text-[10px] px-1.5 py-0.5 rounded font-bold uppercase ${TYPES[m.type].color}`;
+                    
+                    btn.disabled = m.currentPp <= 0;
+                    btn.style.opacity = m.currentPp <= 0 ? '0.5' : '1';
+                } else {
+                    btn.classList.add('hidden');
+                }
+            }
+        }
+
+        function setHpBarColor(element, pct) {
+            if (pct > 50) {
+                element.className = 'hp-fill h-full bg-emerald-500';
+            } else if (pct > 20) {
+                element.className = 'hp-fill h-full bg-amber-500';
+            } else {
+                element.className = 'hp-fill h-full bg-red-600';
+            }
+        }
+
+        function renderTypeBadges(containerId, types) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+            types.forEach(tKey => {
+                const typeObj = TYPES[tKey];
+                const span = document.createElement('span');
+                span.className = `text-[9px] px-1.5 py-0.2 rounded font-bold ${typeObj.color}`;
+                span.textContent = typeObj.name;
+                container.appendChild(span);
+            });
+        }
+
+        function setBattleLog(msg) {
+            document.getElementById('battleLog').textContent = msg;
+        }
+
+        function showMoveMenu() {
+            if (Game.isTurnProcessing) return;
+            AudioFX.playClick();
+            document.getElementById('mainCommands').classList.add('hidden');
+            document.getElementById('moveCommands').classList.remove('hidden');
+        }
+
+        function hideMoveMenu() {
+            AudioFX.playClick();
+            document.getElementById('moveCommands').classList.add('hidden');
+            document.getElementById('mainCommands').classList.remove('hidden');
+        }
+
+        function useMove(moveIdx) {
+            if (Game.isTurnProcessing) return;
+            const player = Game.playerMonster;
+            const move = player.moves[moveIdx];
+            if (!move || move.currentPp <= 0) return;
+
+            hideMoveMenu();
+            Game.isTurnProcessing = true;
+            move.currentPp--;
+
+            // Turn Execution sequence
+            const enemy = Game.enemyMonster;
+            const enemyMove = enemy.moves[Math.floor(Math.random() * enemy.moves.length)];
+
+            // Determine turn priority
+            let playerFirst = true;
+            if ((move.priority || 0) < (enemyMove.priority || 0)) {
+                playerFirst = false;
+            } else if ((move.priority || 0) === (enemyMove.priority || 0)) {
+                playerFirst = player.spd >= enemy.spd;
+            }
+
+            if (playerFirst) {
+                executeSingleAttack(player, enemy, move, true, () => {
+                    if (enemy.isFainted()) {
+                        handleEnemyFaint();
+                    } else {
+                        setTimeout(() => {
+                            executeSingleAttack(enemy, player, enemyMove, false, () => {
+                                if (player.isFainted()) {
+                                    handlePlayerFaint();
+                                } else {
+                                    Game.isTurnProcessing = false;
+                                    updateUI();
+                                }
+                            });
+                        }, 800);
+                    }
+                });
+            } else {
+                executeSingleAttack(enemy, player, enemyMove, false, () => {
+                    if (player.isFainted()) {
+                        handlePlayerFaint();
+                    } else {
+                        setTimeout(() => {
+                            executeSingleAttack(player, enemy, move, true, () => {
+                                if (enemy.isFainted()) {
+                                    handleEnemyFaint();
+                                } else {
+                                    Game.isTurnProcessing = false;
+                                    updateUI();
+                                }
+                            });
+                        }, 800);
+                    }
+                });
+            }
+        }
+
+        function executeSingleAttack(attacker, defender, move, isPlayer, onComplete) {
+            setBattleLog(`${attacker.name} の ${move.name}！`);
+            
+            // Sprite Lunge animation
+            const spriteContainer = document.getElementById(isPlayer ? 'playerSpriteContainer' : 'enemySpriteContainer');
+            spriteContainer.classList.add(isPlayer ? 'animate-attack-player' : 'animate-attack-enemy');
+            setTimeout(() => spriteContainer.classList.remove('animate-attack-player', 'animate-attack-enemy'), 400);
+
+            // Canvas FX Particle Trigger
+            FXEngine.playAttackFx(move.animation, isPlayer, () => {
+                // Stat Boost Move
+                if (move.power === 0 && move.statBoost) {
+                    if (move.statBoost.stat === 'atk') attacker.atkStage += move.statBoost.amount;
+                    if (move.statBoost.stat === 'def') attacker.defStage += move.statBoost.amount;
+                    
+                    AudioFX.playClick();
+                    setBattleLog(`${attacker.name} の ステータスが あがった！`);
+                    setTimeout(onComplete, 1000);
+                    return;
+                }
+
+                // Damage Move
+                const { damage, mult } = calculateDamage(attacker, defender, move);
+                defender.currentHp = Math.max(0, defender.currentHp - damage);
+
+                AudioFX.playHit();
+
+                // Target Shake Screen
+                const targetContainer = document.getElementById(isPlayer ? 'enemySpriteContainer' : 'playerSpriteContainer');
+                targetContainer.classList.add('animate-shake');
+                setTimeout(() => targetContainer.classList.remove('animate-shake'), 400);
+
+                updateUI();
+
+                // Multiplier message
+                let effMsg = "";
+                if (mult > 1.2) {
+                    effMsg = " 効果は ばつぐんだ！";
+                    AudioFX.playSuperEffective();
+                } else if (mult < 0.8 && mult > 0) {
+                    effMsg = " 効果は いまいちのようだ...";
+                }
+
+                setBattleLog(`${defender.name} に ${damage} の ダメージ！${effMsg}`);
+
+                // Drain Heal
+                if (move.healRatio) {
+                    const healAmt = Math.floor(damage * move.healRatio);
+                    attacker.currentHp = Math.min(attacker.maxHp, attacker.currentHp + healAmt);
+                }
+
+                setTimeout(onComplete, 1200);
+            });
+        }
+
+        function handleEnemyFaint() {
+            AudioFX.playFaint();
+            setBattleLog(`野生の ${Game.enemyMonster.name} は たおれた！`);
+            
+            // EXP gain
+            const expGained = Game.enemyMonster.level * 15;
+            Game.playerMonster.level += 1; // Level up bonus
+            
+            setTimeout(() => {
+                document.getElementById('resultTitle').textContent = "しょうり！";
+                document.getElementById('resultTitle').className = "text-2xl font-bold font-pixel text-yellow-300";
+                document.getElementById('resultDesc').textContent = `${Game.enemyMonster.name} に しょうりした！ けいけんち ${expGained} EXP を かくとく！`;
+                document.getElementById('resultIcon').innerHTML = `<i class="fa-solid fa-trophy"></i>`;
+                document.getElementById('resultBtn').textContent = "つぎの バトルへ";
+                document.getElementById('resultModal').classList.remove('hidden');
+                Game.isTurnProcessing = false;
+            }, 1000);
+        }
+
+        function handlePlayerFaint() {
+            AudioFX.playFaint();
+            setBattleLog(`${Game.playerMonster.name} は たおれた！`);
+
+            // Check if party has alive monsters
+            const aliveMonster = Game.playerParty.find(m => !m.isFainted());
+            if (aliveMonster) {
+                setTimeout(() => {
+                    openPartyModal();
+                    Game.isTurnProcessing = false;
+                }, 1000);
+            } else {
+                setTimeout(() => {
+                    document.getElementById('resultTitle').textContent = "はいぼく...";
+                    document.getElementById('resultTitle').className = "text-2xl font-bold font-pixel text-red-400";
+                    document.getElementById('resultDesc').textContent = "てもとの モンスターが みんな たおれてしまった！";
+                    document.getElementById('resultIcon').innerHTML = `<i class="fa-solid fa-skull"></i>`;
+                    document.getElementById('resultBtn').textContent = "もういちど ちょうせん";
+                    document.getElementById('resultModal').classList.remove('hidden');
+                    Game.isTurnProcessing = false;
+                }, 1000);
+            }
+        }
+
+        function openPartyModal() {
+            const list = document.getElementById('partyList');
+            list.innerHTML = '';
+
+            Game.playerParty.forEach((m, idx) => {
+                const card = document.createElement('div');
+                const isCurrent = idx === Game.activePlayerIdx;
+                const isFainted = m.isFainted();
+
+                card.className = `p-3 rounded-xl border flex justify-between items-center cursor-pointer transition ${
+                    isCurrent ? 'bg-slate-800 border-cyan-400' : 'bg-slate-950 border-slate-700 hover:bg-slate-800'
+                } ${isFainted ? 'opacity-50 pointer-events-none' : ''}`;
+
+                card.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center border border-slate-600">
+                            ${m.svgFn('#2980B9')}
+                        </div>
+                        <div>
+                            <div class="font-bold text-sm ${isCurrent ? 'text-cyan-300' : 'text-white'}">
+                                ${m.name} ${isCurrent ? '<span class="text-[10px] bg-cyan-900 text-cyan-200 px-1 rounded ml-1">せんとうちゅう</span>' : ''}
+                            </div>
+                            <div class="text-xs text-slate-400">Lv.${m.level} | HP ${m.currentHp}/${m.maxHp}</div>
+                        </div>
+                    </div>
+                    <button class="px-3 py-1 text-xs rounded font-bold ${isCurrent || isFainted ? 'bg-slate-700 text-slate-400' : 'bg-emerald-600 hover:bg-emerald-500 text-white'}">
+                        ${isCurrent ? '選択中' : 'こうかん'}
+                    </button>
+                `;
+
+                card.onclick = () => {
+                    if (!isCurrent && !isFainted) {
+                        Game.activePlayerIdx = idx;
+                        closePartyModal();
+                        setBattleLog(`${Game.playerMonster.name}、きみに きめた！`);
+                        updateUI();
+                    }
+                };
+
+                list.appendChild(card);
+            });
+
+            document.getElementById('partyModal').classList.remove('hidden');
+        }
+
+        function closePartyModal() {
+            document.getElementById('partyModal').classList.add('hidden');
+        }
+
+        function openBagModal() {
+            const list = document.getElementById('itemList');
+            list.innerHTML = '';
+
+            Game.items.forEach((item, idx) => {
+                const card = document.createElement('div');
+                card.className = "p-3 bg-slate-950 border border-slate-700 rounded-xl flex justify-between items-center";
+
+                card.innerHTML = `
+                    <div>
+                        <div class="font-bold text-sm text-amber-300">${item.name} <span class="text-xs text-slate-400">x${item.qty}</span></div>
+                        <div class="text-xs text-slate-400">${item.desc}</div>
+                    </div>
+                    <button class="px-3 py-1.5 text-xs bg-amber-600 hover:bg-amber-500 rounded font-bold text-white disabled:opacity-50" ${item.qty <= 0 ? 'disabled' : ''}>
+                        つかう
+                    </button>
+                `;
+
+                card.querySelector('button').onclick = () => useItem(idx);
+                list.appendChild(card);
+            });
+
+            document.getElementById('bagModal').classList.remove('hidden');
+        }
+
+        function closeBagModal() {
+            document.getElementById('bagModal').classList.add('hidden');
+        }
+
+        function useItem(itemIdx) {
+            const item = Game.items[itemIdx];
+            if (item.qty <= 0 || Game.isTurnProcessing) return;
+
+            item.qty--;
+            closeBagModal();
+            Game.isTurnProcessing = true;
+
+            const player = Game.playerMonster;
+            if (item.heal) {
+                player.currentHp = Math.min(player.maxHp, player.currentHp + item.heal);
+                AudioFX.playClick();
+                setBattleLog(`${item.name} を つかった！ HPが ${item.heal} かいふくした！`);
+            } else if (item.buffAtk) {
+                player.atkStage += item.buffAtk;
+                AudioFX.playClick();
+                setBattleLog(`${item.name} を つかった！ こうげき力が アップした！`);
+            }
+
+            updateUI();
+
+            // Enemy Turn Response
+            setTimeout(() => {
+                const enemy = Game.enemyMonster;
+                const enemyMove = enemy.moves[Math.floor(Math.random() * enemy.moves.length)];
+                executeSingleAttack(enemy, player, enemyMove, false, () => {
+                    if (player.isFainted()) {
+                        handlePlayerFaint();
+                    } else {
+                        Game.isTurnProcessing = false;
+                        updateUI();
+                    }
+                });
+            }, 1000);
+        }
+
+        function attemptCatch() {
+            if (Game.isTurnProcessing) return;
+            Game.isTurnProcessing = true;
+
+            setBattleLog("モンスターボールを なげた！");
+            AudioFX.playClick();
+
+            const enemy = Game.enemyMonster;
+            const hpRatio = enemy.currentHp / enemy.maxHp;
+            const catchRate = Math.max(0.2, 1.0 - hpRatio); // Higher chance with lower HP
+
+            setTimeout(() => {
+                if (Math.random() < catchRate) {
+                    AudioFX.playCatchSuccess();
+                    setBattleLog(`やったー！ 野生の ${enemy.name} を つかまえたぞ！`);
+
+                    // Add to party if space available
+                    if (Game.playerParty.length < 6) {
+                        Game.playerParty.push(enemy);
+                    }
+
+                    setTimeout(() => {
+                        document.getElementById('resultTitle').textContent = "ゲットせいこう！";
+                        document.getElementById('resultTitle').className = "text-2xl font-bold font-pixel text-emerald-300";
+                        document.getElementById('resultDesc').textContent = `${enemy.name} が てもとに くわわった！`;
+                        document.getElementById('resultIcon').innerHTML = `<i class="fa-solid fa-circle-check"></i>`;
+                        document.getElementById('resultBtn').textContent = "つぎの バトルへ";
+                        document.getElementById('resultModal').classList.remove('hidden');
+                        Game.isTurnProcessing = false;
+                    }, 1200);
+                } else {
+                    AudioFX.playHit();
+                    setBattleLog("あぁーっ！ モンスターが ボールから でてしまった！");
+                    
+                    // Enemy retaliates
+                    setTimeout(() => {
+                        const enemyMove = enemy.moves[Math.floor(Math.random() * enemy.moves.length)];
+                        executeSingleAttack(enemy, Game.playerMonster, enemyMove, false, () => {
+                            if (Game.playerMonster.isFainted()) {
+                                handlePlayerFaint();
+                            } else {
+                                Game.isTurnProcessing = false;
+                                updateUI();
+                            }
+                        });
+                    }, 1000);
+                }
+            }, 1500);
+        }
+
+        function nextBattleStage() {
+            document.getElementById('resultModal').classList.add('hidden');
+            
+            // If lost, reset completely
+            if (Game.playerParty.every(m => m.isFainted())) {
+                initGame();
+                return;
+            }
+
+            // Advance stage
+            Game.stage++;
+            // Restore team HP slightly between stages
+            Game.playerParty.forEach(m => {
+                m.currentHp = Math.min(m.maxHp, m.currentHp + Math.floor(m.maxHp * 0.4));
+            });
+
+            spawnStageEnemy();
+            updateUI();
+        }
+
+        window.onload = function() {
+            initGame();
+        };
+    </script>
+</body>
+</html>
